@@ -10,6 +10,7 @@ const PropertiesPanel = ({
 }) => {
   const [selectedConnector, setSelectedConnector] = useState("");
   const [connectors, setConnectors] = useState([]);
+  const [apiFunctions, setApiFunctions] = useState([]); // State for storing API functions
   const [jiraDetails, setJiraDetails] = useState({
     username: "",
     apiKey: "",
@@ -22,6 +23,7 @@ const PropertiesPanel = ({
   const [isJiraDetailsEdited, setIsJiraDetailsEdited] = useState(false);
   const [isSlackDetailsEdited, setIsSlackDetailsEdited] = useState(false);
 
+  // Fetch connectors and API functions based on the selected connector
   useEffect(() => {
     fetch("http://127.0.0.1:5000/getconnectors")
       .then((response) => response.json())
@@ -34,6 +36,20 @@ const PropertiesPanel = ({
       })
       .catch((error) => console.error("Error fetching connectors:", error));
   }, []);
+
+  useEffect(() => {
+    if (selectedConnector) {
+      // Fetch the API functions when a connector is selected
+      fetch(`http://127.0.0.1:5000/getapifunctionsbyconnector/${selectedConnector}`)
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.api_functions) {
+            setApiFunctions(data.api_functions); // Set the fetched API functions
+          }
+        })
+        .catch((error) => console.error("Error fetching API functions:", error));
+    }
+  }, [selectedConnector]); // Run this effect whenever selectedConnector changes
 
   const handleDropdownChange = (key, value) => {
     if (key === "connectorType") {
@@ -87,7 +103,7 @@ const PropertiesPanel = ({
   };
 
   const filteredActionOptions = selectedConnector
-    ? actionOptions[selectedConnector]
+    ? apiFunctions.map((apiFunction) => apiFunction.function_name) // Use API function names for the dropdown
     : [];
 
   return (
@@ -121,7 +137,7 @@ const PropertiesPanel = ({
               >
                 <option value="">Select</option>
                 {connectors.map((connector) => (
-                  <option key={connector.id} value={connector.name}>
+                  <option key={connector.id} value={connector.id}>
                     {connector.name}
                   </option>
                 ))}
@@ -246,7 +262,7 @@ const PropertiesPanel = ({
           </p>
           <p>
             <strong>Source:</strong> {selectedEdge.source}
-          </p>{" "}
+          </p>
           <p>
             <strong>Target:</strong> {selectedEdge.target}
           </p>
