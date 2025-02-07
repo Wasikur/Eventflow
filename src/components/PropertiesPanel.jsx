@@ -8,103 +8,102 @@ const PropertiesPanel = ({
   onPropertyChange,
   isActionConnectedToConnector,
 }) => {
+  // Static connectors for selection
+  const connectors = [
+    { id: "weather", name: "Weather" },
+    { id: "jira", name: "Jira" },
+    { id: "slack", name: "Slack" },
+  ];
+
+  // Local state for Connector nodes.
   const [selectedConnector, setSelectedConnector] = useState("");
-  const [connectors, setConnectors] = useState([]);
-  const [apiFunctions, setApiFunctions] = useState([]); // State for storing API functions
+  const [weatherDetails, setWeatherDetails] = useState({ apiKey: "" });
   const [jiraDetails, setJiraDetails] = useState({
+    baseUrl: "",
     username: "",
     apiKey: "",
-    baseUrl: "",
   });
-  const [slackDetails, setSlackDetails] = useState({
-    channel: "",
-    apiKey: "",
-  });
-  const [isJiraDetailsEdited, setIsJiraDetailsEdited] = useState(false);
-  const [isSlackDetailsEdited, setIsSlackDetailsEdited] = useState(false);
+  const [slackDetails, setSlackDetails] = useState({ apiKey: "" });
 
-  // Fetch connectors and API functions based on the selected connector
-  useEffect(() => {
-    fetch("http://127.0.0.1:5000/getconnectors")
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.connectors) {
-          setConnectors(data.connectors);
-          // Ensure "Select" is the default option
-          setSelectedConnector("");
-        }
-      })
-      .catch((error) => console.error("Error fetching connectors:", error));
-  }, []);
+  // For Action nodes, available actions depend on the connected connector.
+  const actionOptions = {
+    Weather: ["Get Weather"],
+    Jira: ["Fetch Issues"],
+    Slack: ["Send Message"],
+  };
 
+  // Update local state when a new node is selected.
   useEffect(() => {
-    if (selectedConnector) {
-      // Fetch the API functions when a connector is selected
-      fetch(`http://127.0.0.1:5000/getapifunctionsbyconnector/${selectedConnector}`)
-        .then((response) => response.json())
-        .then((data) => {
-          if (data.api_functions) {
-            setApiFunctions(data.api_functions); // Set the fetched API functions
-          }
-        })
-        .catch((error) => console.error("Error fetching API functions:", error));
+    if (selectedNode && selectedNode.type === "Connector") {
+      // Load existing values from node data or default to empty values.
+      setSelectedConnector(selectedNode.data.connectorType || "");
+      setWeatherDetails({ apiKey: selectedNode.data.apiKey || "" });
+      setJiraDetails({
+        baseUrl: selectedNode.data.baseUrl || "",
+        username: selectedNode.data.username || "",
+        apiKey: selectedNode.data.apiKey || "",
+      });
+      setSlackDetails({ apiKey: selectedNode.data.apiKey || "" });
     }
-  }, [selectedConnector]); // Run this effect whenever selectedConnector changes
+  }, [selectedNode]);
 
+  // For action nodes, determine available actions based on the connected connector.
+  let availableActions = [];
+  if (selectedNode && selectedNode.type === "Action") {
+    if (selectedNode.data.connectorType) {
+      availableActions = actionOptions[selectedNode.data.connectorType] || [];
+    }
+  }
+
+  // Called when a property is changed; passes the value up to update the node’s data.
   const handleDropdownChange = (key, value) => {
     if (key === "connectorType") {
       setSelectedConnector(value);
-      // Reset fields if "Select" is chosen
-      if (value === "") {
-        setJiraDetails({ username: "", apiKey: "", baseUrl: "" });
-        setSlackDetails({ channel: "", apiKey: "" });
-        setIsJiraDetailsEdited(false);
-        setIsSlackDetailsEdited(false);
-      } else if (value === "Jira") {
-        setSlackDetails({ channel: "", apiKey: "" });
-        setIsSlackDetailsEdited(false);
-      } else if (value === "Slack") {
-        setJiraDetails({ username: "", apiKey: "", baseUrl: "" });
-        setIsJiraDetailsEdited(false);
-      }
     }
     onPropertyChange(key, value);
   };
 
+  const handleWeatherDetailChange = (e) => {
+    const { name, value } = e.target;
+    setWeatherDetails((prev) => ({ ...prev, [name]: value }));
+  };
+
   const handleJiraDetailChange = (e) => {
     const { name, value } = e.target;
-    setJiraDetails((prevDetails) => ({
-      ...prevDetails,
-      [name]: value,
-    }));
-    setIsJiraDetailsEdited(true);
+    setJiraDetails((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSlackDetailChange = (e) => {
     const { name, value } = e.target;
-    setSlackDetails((prevDetails) => ({
-      ...prevDetails,
-      [name]: value,
-    }));
-    setIsSlackDetailsEdited(true);
+    setSlackDetails((prev) => ({ ...prev, [name]: value }));
   };
 
+  // For action nodes, update the node’s data directly.
+  const handleActionChange = (key, value) => {
+    onPropertyChange(key, value);
+  };
+
+  // When Done is clicked on a Connector node, push up the entered fields into the node's data.
   const handleDoneClick = () => {
-    // Store details in state and reset edited flags
-    console.log("Jira details saved:", jiraDetails);
-    console.log("Slack details saved:", slackDetails);
-    setIsJiraDetailsEdited(false);
-    setIsSlackDetailsEdited(false);
+    if (selectedNode && selectedNode.type === "Connector") {
+      onPropertyChange("connectorType", selectedConnector);
+      if (selectedConnector === "Weather") {
+        onPropertyChange("apiKey", weatherDetails.apiKey);
+      } else if (selectedConnector === "Jira") {
+        onPropertyChange("baseUrl", jiraDetails.baseUrl);
+        onPropertyChange("username", jiraDetails.username);
+        onPropertyChange("apiKey", jiraDetails.apiKey);
+      } else if (selectedConnector === "Slack") {
+        onPropertyChange("apiKey", slackDetails.apiKey);
+      }
+      console.log("Connector details saved for node", selectedNode.id, {
+        connectorType: selectedConnector,
+        weatherDetails,
+        jiraDetails,
+        slackDetails,
+      });
+    }
   };
-
-  const actionOptions = {
-    Jira: ["Create Issue", "Update Issue"],
-    Slack: ["Send Message", "Post Notification"],
-  };
-
-  const filteredActionOptions = selectedConnector
-    ? apiFunctions.map((apiFunction) => apiFunction.function_name) // Use API function names for the dropdown
-    : [];
 
   return (
     <div
@@ -125,7 +124,7 @@ const PropertiesPanel = ({
             <strong>Component:</strong> {selectedNode.data.label}
           </p>
 
-          {/* Custom Dropdown for Connector Node */}
+          {/* --- For Connector Nodes --- */}
           {selectedNode.type === "Connector" && (
             <div>
               <label>Connector Type:</label>
@@ -137,122 +136,146 @@ const PropertiesPanel = ({
               >
                 <option value="">Select</option>
                 {connectors.map((connector) => (
-                  <option key={connector.id} value={connector.id}>
+                  <option key={connector.id} value={connector.name}>
                     {connector.name}
                   </option>
                 ))}
               </select>
-              {/* Custom Fields for Jira (appears only when "Jira" is selected) */}
-              {selectedConnector === "Jira" && (
+
+              {selectedConnector === "Weather" && (
                 <div style={{ marginTop: "20px" }}>
-                  <label>Username:</label>
-                  <input
-                    type="text"
-                    name="username"
-                    value={jiraDetails.username}
-                    onChange={handleJiraDetailChange}
-                    placeholder="Enter Jira username"
-                  />
-                  <br />
                   <label>API Key:</label>
                   <input
-                    type="password"
+                    type="text"
                     name="apiKey"
-                    value={jiraDetails.apiKey}
-                    onChange={handleJiraDetailChange}
-                    placeholder="Enter Jira API key"
+                    value={weatherDetails.apiKey}
+                    onChange={handleWeatherDetailChange}
+                    placeholder="Enter Weather API Key"
                   />
-                  <br />
+                </div>
+              )}
+
+              {selectedConnector === "Jira" && (
+                <div style={{ marginTop: "20px" }}>
                   <label>Base URL:</label>
                   <input
                     type="text"
                     name="baseUrl"
                     value={jiraDetails.baseUrl}
                     onChange={handleJiraDetailChange}
-                    placeholder="Enter Jira base URL"
+                    placeholder="Enter Jira Base URL"
                   />
                   <br />
-                  <button
-                    onClick={handleDoneClick}
-                    disabled={
-                      !jiraDetails.username ||
-                      !jiraDetails.apiKey ||
-                      !jiraDetails.baseUrl ||
-                      !isJiraDetailsEdited
-                    }
-                    style={buttonStyle}
-                  >
-                    Done
-                  </button>
-                </div>
-              )}
-
-              {/* Custom Fields for Slack (appears only when "Slack" is selected) */}
-              {selectedConnector === "Slack" && (
-                <div style={{ marginTop: "20px" }}>
-                  <label>Channel:</label>
+                  <label>Username:</label>
                   <input
                     type="text"
-                    name="channel"
-                    value={slackDetails.channel}
-                    onChange={handleSlackDetailChange}
-                    placeholder="Enter Slack channel"
+                    name="username"
+                    value={jiraDetails.username}
+                    onChange={handleJiraDetailChange}
+                    placeholder="Enter Jira Username"
                   />
                   <br />
                   <label>API Key:</label>
                   <input
-                    type="password"
+                    type="text"
+                    name="apiKey"
+                    value={jiraDetails.apiKey}
+                    onChange={handleJiraDetailChange}
+                    placeholder="Enter Jira API Key"
+                  />
+                </div>
+              )}
+
+              {selectedConnector === "Slack" && (
+                <div style={{ marginTop: "20px" }}>
+                  <label>API Key:</label>
+                  <input
+                    type="text"
                     name="apiKey"
                     value={slackDetails.apiKey}
                     onChange={handleSlackDetailChange}
-                    placeholder="Enter Slack API key"
+                    placeholder="Enter Slack API Key"
                   />
-                  <br />
-                  <button
-                    onClick={handleDoneClick}
-                    disabled={
-                      !slackDetails.channel ||
-                      !slackDetails.apiKey ||
-                      !isSlackDetailsEdited
-                    }
-                    style={buttonStyle}
-                  >
-                    Done
-                  </button>
                 </div>
               )}
+              
+              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                <button onClick={handleDoneClick} style={buttonStyle}>
+                  Done
+                </button>
+                <button onClick={onRemoveNode} style={buttonStyle}>
+                  Remove Node
+                </button>
+              </div>
+
             </div>
           )}
 
-          {/* Custom Dropdown for Action Node */}
+          {/* --- For Action Nodes --- */}
           {selectedNode.type === "Action" && (
             <div>
               <label>Action Type:</label>
               <select
                 value={selectedNode.data.actionType || ""}
                 onChange={(e) =>
-                  handleDropdownChange("actionType", e.target.value)
+                  handleActionChange("actionType", e.target.value)
                 }
-                disabled={!isActionConnectedToConnector}
+                disabled={
+                  !isActionConnectedToConnector ||
+                  !selectedNode.data.connectorType
+                }
               >
                 <option value="">Select</option>
-                {filteredActionOptions.map((action) => (
+                {availableActions.map((action) => (
                   <option key={action} value={action}>
                     {action}
                   </option>
                 ))}
               </select>
-              {!isActionConnectedToConnector && (
+
+              {/* If the action is Get Weather, ask for a City */}
+              {selectedNode.data.actionType === "Get Weather" && (
+                <div style={{ marginTop: "20px" }}>
+                  <label>City:</label>
+                  <input
+                    type="text"
+                    name="city"
+                    value={selectedNode.data.city || ""}
+                    onChange={(e) =>
+                      handleActionChange("city", e.target.value)
+                    }
+                    placeholder="Enter City"
+                  />
+                </div>
+              )}
+
+              {/* If the action is Send Message, ask for a Channel name */}
+              {selectedNode.data.actionType === "Send Message" && (
+                <div style={{ marginTop: "20px" }}>
+                  <label>Channel:</label>
+                  <input
+                    type="text"
+                    name="channel"
+                    value={selectedNode.data.channel || ""}
+                    onChange={(e) =>
+                      handleActionChange("channel", e.target.value)
+                    }
+                    placeholder="Enter Channel Name"
+                  />
+                </div>
+              )}
+
+              {(!isActionConnectedToConnector || !selectedNode.data.connectorType) && (
                 <p style={{ color: "red" }}>
                   Please connect a Connector node to enable this option.
                 </p>
               )}
+
+              <button onClick={onRemoveNode} style={buttonStyle}>
+                Remove Node
+              </button>
             </div>
           )}
-
-          <button onClick={onRemoveNode} style={buttonStyle}>
-            Remove Node
-          </button>
         </div>
       ) : selectedEdge ? (
         <div>
